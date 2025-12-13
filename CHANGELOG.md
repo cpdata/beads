@@ -7,7 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.29.0] - 2025-12-03
+### Added
+
+- **Inline tombstones for soft-delete (bd-vw8)**
+  - Deleted issues now become tombstones with `status: "tombstone"` in `issues.jsonl`
+  - Full audit trail: `deleted_at`, `deleted_by`, `delete_reason`, `original_type`
+  - TTL-based expiration (default 30 days) with automatic pruning via `bd compact`
+  - Proper 3-way merge support: fresh tombstones win, expired tombstones allow resurrection
+  - Replaces the legacy `deletions.jsonl` manifest approach
+
+- **`bd migrate-tombstones` command (bd-8f9)**
+  - Converts legacy `deletions.jsonl` entries to inline tombstones
+  - Archives old file as `deletions.jsonl.migrated`
+  - Use `--dry-run` to preview changes
+
+### Fixed
+
+- **`bd sync` race condition with daemon (bd-lw0x, bd-hxou)**
+  - Fixed race condition where daemon or next CLI command would see hash mismatch after sync
+  - Previously, `bd sync` with sync.branch would restore .beads/ from HEAD but leave stale hash in DB
+  - This caused auto-import to trigger, which then scheduled re-export, dirtying the working directory
+  - Now updates `jsonl_content_hash` after restore to match the restored file
+  - Also fixed daemon's `performAutoImport` to update hash after successful import
 
 ## [0.29.0] - 2025-12-03
 

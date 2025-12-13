@@ -51,10 +51,12 @@ jobs:
           file: ./coverage.out
           fail_ci_if_error: false
 
+  # TODO: Replace with smoke tests (see bd-bmev)
+  # Full test suite times out; RAM disk experiments didn't help enough
   test-windows-cmd:
     name: Test (Windows - cmd)
     runs-on: windows-latest
-    continue-on-error: true  # Windows filesystem is slow; don't block PRs
+    continue-on-error: true  # Windows tests timeout; don't block PRs
     steps:
       - uses: actions/checkout@v6
 
@@ -77,7 +79,7 @@ jobs:
   test-windows-internal:
     name: Test (Windows - internal)
     runs-on: windows-latest
-    continue-on-error: true  # Windows filesystem is slow; don't block PRs
+    continue-on-error: true  # Windows tests timeout; don't block PRs
     steps:
       - uses: actions/checkout@v6
 
@@ -136,3 +138,13 @@ jobs:
             exit 1
           fi
           echo "✅ Help text first line is correct"
+      - name: Verify default.nix package version matches bd program version
+        run: |
+          BD_VERSION=$(grep 'Version = ' cmd/bd/version.go | sed 's/.*"\(.*\)".*/\1/')
+          NIX_BD_VERSION=$(grep 'version = ' default.nix | sed 's/.*"\(.*\)".*/\1/')
+          if [ "$BD_VERSION" != "$NIX_BD_VERSION" ]; then
+            echo "❌ default.nix version ($NIX_BD_VERSION) != version.go ($BD_VERSION)"
+            echo "Run: scripts/bump-version.sh to sync default.nix"
+            exit 1
+          fi
+          echo "✅ default.nix version matches: $BD_VERSION"

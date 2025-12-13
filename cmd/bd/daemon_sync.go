@@ -455,7 +455,10 @@ func performExport(ctx context.Context, store storage.Storage, autoCommit, autoP
 		// Auto-commit if enabled (skip in git-free mode)
 		if autoCommit && !skipGit {
 			// Try sync branch commit first
-			committed, err := syncBranchCommitAndPush(exportCtx, store, autoPush, log)
+			// Use forceOverwrite=true because mutation-triggered exports (create, update, delete)
+			// mean the local state is authoritative and should not be merged with worktree.
+			// This is critical for delete mutations to be properly reflected in the sync branch.
+			committed, err := syncBranchCommitAndPushWithOptions(exportCtx, store, autoPush, true, log)
 			if err != nil {
 				log.log("Sync branch commit failed: %v", err)
 				return
@@ -596,6 +599,18 @@ func performAutoImport(ctx context.Context, store storage.Storage, skipGit bool,
 		if err := validatePostImport(beforeCount, afterCount, jsonlPath); err != nil {
 			log.log("Post-import validation failed: %v", err)
 			return
+		}
+
+		// Update jsonl_content_hash after successful import to prevent repeated imports
+		// Uses repoKey for multi-repo support (bd-ar2.10, bd-ar2.11)
+		hashKey := "jsonl_content_hash"
+		if repoKey != "" {
+			hashKey += ":" + repoKey
+		}
+		if currentHash, err := computeJSONLHash(jsonlPath); err == nil {
+			if err := store.SetMetadata(importCtx, hashKey, currentHash); err != nil {
+				log.log("Warning: failed to update %s after import: %v", hashKey, err)
+			}
 		}
 
 		if skipGit {
