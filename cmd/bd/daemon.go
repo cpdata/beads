@@ -67,26 +67,12 @@ Run 'bd daemon' with no flags to see available options.`,
 		if start && !stop && !status && !health && !metrics {
 			if !cmd.Flags().Changed("auto-commit") {
 				if dbPath := beads.FindDatabasePath(); dbPath != "" {
-					ctx := context.Background()
-					store, err := sqlite.New(ctx, dbPath)
-					if err == nil {
-						if configVal, err := store.GetConfig(ctx, "daemon.auto_commit"); err == nil && configVal == "true" {
-							autoCommit = true
-						}
-						_ = store.Close()
-					}
+					autoCommit = readDaemonAutoConfigFromDB(dbPath, "auto_commit")
 				}
 			}
 			if !cmd.Flags().Changed("auto-push") {
 				if dbPath := beads.FindDatabasePath(); dbPath != "" {
-					ctx := context.Background()
-					store, err := sqlite.New(ctx, dbPath)
-					if err == nil {
-						if configVal, err := store.GetConfig(ctx, "daemon.auto_push"); err == nil && configVal == "true" {
-							autoPush = true
-						}
-						_ = store.Close()
-					}
+					autoPush = readDaemonAutoConfigFromDB(dbPath, "auto_push")
 				}
 			}
 		}
@@ -546,4 +532,31 @@ func runDaemonLoop(interval time.Duration, autoCommit, autoPush, localMode bool,
 		log.log("Unknown BEADS_DAEMON_MODE: %s (valid: poll, events), defaulting to poll", daemonMode)
 		runEventLoop(ctx, cancel, ticker, doSync, server, serverErrChan, parentPID, log)
 	}
+}
+
+// readDaemonAutoConfigFromDB reads auto-commit/auto-push config from the database.
+// It supports both the documented "sync.*" prefix and the legacy "daemon.*" prefix.
+// The sync.* prefix takes priority if both are set (it's the documented approach).
+// configName should be "auto_commit" or "auto_push".
+func readDaemonAutoConfigFromDB(dbPath, configName string) bool {
+	ctx := context.Background()
+	store, err := sqlite.New(ctx, dbPath)
+	if err != nil {
+		return false
+	}
+	defer store.Close()
+
+	// Check sync.* prefix first (documented approach in WORKTREES.md)
+	syncKey := "sync." + configName
+	if configVal, err := store.GetConfig(ctx, syncKey); err == nil && configVal == "true" {
+		return true
+	}
+
+	// Fall back to daemon.* prefix (legacy, used by bd init --team)
+	daemonKey := "daemon." + configName
+	if configVal, err := store.GetConfig(ctx, daemonKey); err == nil && configVal == "true" {
+		return true
+	}
+
+	return false
 }
