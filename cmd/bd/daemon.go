@@ -37,6 +37,7 @@ Common operations:
   bd daemon --start              Start the daemon (background)
   bd daemon --start --foreground Start in foreground (for systemd/supervisord)
   bd daemon --stop               Stop a running daemon
+  bd daemon --restart            Restart the daemon (stop then start)
   bd daemon --stop-all           Stop ALL running bd daemons
   bd daemon --status             Check if daemon is running
   bd daemon --health             Check daemon health and metrics
@@ -46,6 +47,7 @@ Run 'bd daemon' with no flags to see available options.`,
 		start, _ := cmd.Flags().GetBool("start")
 		stop, _ := cmd.Flags().GetBool("stop")
 		stopAll, _ := cmd.Flags().GetBool("stop-all")
+		restart, _ := cmd.Flags().GetBool("restart")
 		status, _ := cmd.Flags().GetBool("status")
 		health, _ := cmd.Flags().GetBool("health")
 		metrics, _ := cmd.Flags().GetBool("metrics")
@@ -60,7 +62,7 @@ Run 'bd daemon' with no flags to see available options.`,
 		logJSON, _ := cmd.Flags().GetBool("log-json")
 
 		// If no operation flags provided, show help
-		if !start && !stop && !stopAll && !status && !health && !metrics {
+		if !start && !stop && !stopAll && !restart && !status && !health && !metrics {
 			_ = cmd.Help()
 			return
 		}
@@ -153,6 +155,19 @@ Run 'bd daemon' with no flags to see available options.`,
 		if stopAll {
 			stopAllDaemons()
 			return
+		}
+
+		// Handle restart: stop then start
+		if restart {
+			fmt.Println("Restarting daemon...")
+			// Stop existing daemon if running
+			if isRunning, _ := isDaemonRunning(pidFile); isRunning {
+				stopDaemon(pidFile)
+				// Wait briefly for daemon to fully stop
+				time.Sleep(500 * time.Millisecond)
+			}
+			// Continue to start logic below
+			start = true
 		}
 
 		// If we get here and --start wasn't provided, something is wrong
@@ -259,6 +274,7 @@ func init() {
 	daemonCmd.Flags().Bool("auto-pull", false, "Automatically pull from remote (default: true when sync.branch configured)")
 	daemonCmd.Flags().Bool("local", false, "Run in local-only mode (no git required, no sync)")
 	daemonCmd.Flags().Bool("stop", false, "Stop running daemon")
+	daemonCmd.Flags().Bool("restart", false, "Restart the daemon (stop then start)")
 	daemonCmd.Flags().Bool("stop-all", false, "Stop all running bd daemons")
 	daemonCmd.Flags().Bool("status", false, "Show daemon status")
 	daemonCmd.Flags().Bool("health", false, "Check daemon health and metrics")
