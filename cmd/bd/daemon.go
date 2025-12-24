@@ -251,6 +251,67 @@ Run 'bd daemon' with no flags to see available options.`,
 	},
 }
 
+// daemonStartCmd is a subcommand alias for 'bd daemon --start'
+var daemonStartCmd = &cobra.Command{
+	Use:   "start",
+	Short: "Start the daemon (alias for --start)",
+	Long:  `Start the background daemon. This is an alias for 'bd daemon --start'.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		parent := cmd.Parent()
+		// Set the --start flag
+		_ = parent.Flags().Set("start", "true")
+
+		// Copy flag values from subcommand to parent
+		copyFlagIfChanged(cmd, parent, "interval")
+		copyFlagIfChanged(cmd, parent, "auto-commit")
+		copyFlagIfChanged(cmd, parent, "auto-push")
+		copyFlagIfChanged(cmd, parent, "auto-pull")
+		copyFlagIfChanged(cmd, parent, "local")
+		copyFlagIfChanged(cmd, parent, "log")
+		copyFlagIfChanged(cmd, parent, "foreground")
+		copyFlagIfChanged(cmd, parent, "log-level")
+		copyFlagIfChanged(cmd, parent, "log-json")
+
+		parent.Run(parent, args)
+	},
+}
+
+// daemonStopCmd is a subcommand alias for 'bd daemon --stop'
+var daemonStopCmd = &cobra.Command{
+	Use:   "stop",
+	Short: "Stop the daemon (alias for --stop)",
+	Long:  `Stop a running daemon. This is an alias for 'bd daemon --stop'.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		// Set the --stop flag and delegate to parent command
+		_ = cmd.Parent().Flags().Set("stop", "true")
+		cmd.Parent().Run(cmd.Parent(), args)
+	},
+}
+
+// copyFlagIfChanged copies a flag value from src to dst if it was explicitly set
+func copyFlagIfChanged(src, dst *cobra.Command, name string) {
+	if src.Flags().Changed(name) {
+		val, _ := src.Flags().GetString(name)
+		if val == "" {
+			// Try bool
+			if boolVal, err := src.Flags().GetBool(name); err == nil {
+				if boolVal {
+					_ = dst.Flags().Set(name, "true")
+				} else {
+					_ = dst.Flags().Set(name, "false")
+				}
+				return
+			}
+			// Try duration
+			if durVal, err := src.Flags().GetDuration(name); err == nil {
+				_ = dst.Flags().Set(name, durVal.String())
+				return
+			}
+		}
+		_ = dst.Flags().Set(name, val)
+	}
+}
+
 func init() {
 	daemonCmd.Flags().Bool("start", false, "Start the daemon")
 	daemonCmd.Flags().Duration("interval", 5*time.Second, "Sync check interval")
@@ -268,6 +329,22 @@ func init() {
 	daemonCmd.Flags().String("log-level", "info", "Log level (debug, info, warn, error)")
 	daemonCmd.Flags().Bool("log-json", false, "Output logs in JSON format (structured logging)")
 	daemonCmd.Flags().BoolVar(&jsonOutput, "json", false, "Output JSON format")
+
+	// Copy relevant flags to subcommands so they can be used with 'bd daemon start --foreground' etc.
+	daemonStartCmd.Flags().Duration("interval", 5*time.Second, "Sync check interval")
+	daemonStartCmd.Flags().Bool("auto-commit", false, "Automatically commit changes")
+	daemonStartCmd.Flags().Bool("auto-push", false, "Automatically push commits")
+	daemonStartCmd.Flags().Bool("auto-pull", false, "Automatically pull from remote (default: true when sync.branch configured)")
+	daemonStartCmd.Flags().Bool("local", false, "Run in local-only mode (no git required, no sync)")
+	daemonStartCmd.Flags().String("log", "", "Log file path (default: .beads/daemon.log)")
+	daemonStartCmd.Flags().Bool("foreground", false, "Run in foreground (don't daemonize)")
+	daemonStartCmd.Flags().String("log-level", "info", "Log level (debug, info, warn, error)")
+	daemonStartCmd.Flags().Bool("log-json", false, "Output logs in JSON format (structured logging)")
+
+	// Add subcommands to daemon command
+	daemonCmd.AddCommand(daemonStartCmd)
+	daemonCmd.AddCommand(daemonStopCmd)
+
 	rootCmd.AddCommand(daemonCmd)
 }
 
