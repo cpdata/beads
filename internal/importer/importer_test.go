@@ -1708,3 +1708,123 @@ func TestMultiRepoPrefixValidation(t *testing.T) {
 		}
 	})
 }
+
+func TestDeleteMissing(t *testing.T) {
+	ctx := context.Background()
+	tmpDB := t.TempDir() + "/test.db"
+
+	store, err := sqlite.New(ctx, tmpDB)
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	// Set up prefix
+	if err := store.SetConfig(ctx, "issue_prefix", "test"); err != nil {
+		t.Fatalf("Failed to set prefix: %v", err)
+	}
+
+	// Create initial issues in DB
+	initialIssues := []*types.Issue{
+		{
+			ID:        "test-abc1",
+			Title:     "Issue 1",
+			Status:    types.StatusOpen,
+			Priority:  2,
+			IssueType: types.TypeTask,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		},
+		{
+			ID:        "test-abc2",
+			Title:     "Issue 2",
+			Status:    types.StatusOpen,
+			Priority:  2,
+			IssueType: types.TypeTask,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		},
+		{
+			ID:        "test-abc3",
+			Title:     "Issue 3",
+			Status:    types.StatusOpen,
+			Priority:  2,
+			IssueType: types.TypeTask,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		},
+	}
+
+	// Import initial issues
+	_, err = ImportIssues(ctx, tmpDB, store, initialIssues, Options{})
+	if err != nil {
+		t.Fatalf("Failed to import initial issues: %v", err)
+	}
+
+	// Verify all 3 issues exist
+	allIssues, err := store.SearchIssues(ctx, "", types.IssueFilter{})
+	if err != nil {
+		t.Fatalf("Failed to search issues: %v", err)
+	}
+	if len(allIssues) != 3 {
+		t.Fatalf("Expected 3 issues, got %d", len(allIssues))
+	}
+
+	// Now import only 2 issues with --delete-missing
+	partialIssues := []*types.Issue{
+		{
+			ID:        "test-abc1",
+			Title:     "Issue 1",
+			Status:    types.StatusOpen,
+			Priority:  2,
+			IssueType: types.TypeTask,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		},
+		{
+			ID:        "test-abc3",
+			Title:     "Issue 3",
+			Status:    types.StatusOpen,
+			Priority:  2,
+			IssueType: types.TypeTask,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		},
+	}
+
+	result, err := ImportIssues(ctx, tmpDB, store, partialIssues, Options{
+		DeleteMissing: true,
+	})
+	if err != nil {
+		t.Fatalf("Failed to import with delete-missing: %v", err)
+	}
+
+	// Verify test-abc2 was deleted
+	if result.Deleted != 1 {
+		t.Errorf("Expected 1 deleted, got %d", result.Deleted)
+	}
+	if len(result.DeletedIDs) != 1 || result.DeletedIDs[0] != "test-abc2" {
+		t.Errorf("Expected DeletedIDs to contain 'test-abc2', got %v", result.DeletedIDs)
+	}
+
+	// Verify only 2 issues remain
+	remainingIssues, err := store.SearchIssues(ctx, "", types.IssueFilter{})
+	if err != nil {
+		t.Fatalf("Failed to search remaining issues: %v", err)
+	}
+	if len(remainingIssues) != 2 {
+		t.Errorf("Expected 2 remaining issues, got %d", len(remainingIssues))
+	}
+
+	// Verify the correct issues remain
+	issueIDs := make(map[string]bool)
+	for _, issue := range remainingIssues {
+		issueIDs[issue.ID] = true
+	}
+	if !issueIDs["test-abc1"] || !issueIDs["test-abc3"] {
+		t.Errorf("Expected test-abc1 and test-abc3 to remain, got %v", issueIDs)
+	}
+	if issueIDs["test-abc2"] {
+		t.Error("test-abc2 should have been deleted")
+	}
+}

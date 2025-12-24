@@ -39,6 +39,7 @@ type Options struct {
 	OrphanHandling             OrphanHandling  // How to handle missing parent issues (default: allow)
 	ClearDuplicateExternalRefs bool            // Clear duplicate external_ref values instead of erroring
 	ProtectLocalExportIDs      map[string]bool // IDs from left snapshot to protect from deletion (bd-sync-deletion fix)
+	DeleteMissing              bool            // Delete issues from DB that are not present in JSONL (full sync mode)
 }
 
 // Result contains statistics about the import operation
@@ -47,6 +48,7 @@ type Result struct {
 	Updated             int               // Existing issues updated
 	Unchanged           int               // Existing issues that matched exactly (idempotent)
 	Skipped             int               // Issues skipped (duplicates, errors)
+	Deleted             int               // Issues deleted from DB (--delete-missing mode)
 	Collisions          int               // Collisions detected
 	IDMapping           map[string]string // Mapping of remapped IDs (old -> new)
 	CollisionIDs        []string          // IDs that collided
@@ -54,6 +56,7 @@ type Result struct {
 	ExpectedPrefix      string            // Database configured prefix
 	MismatchPrefixes    map[string]int    // Map of mismatched prefixes to count
 	SkippedDependencies []string          // Dependencies skipped due to FK constraint violations
+	DeletedIDs          []string          // IDs of issues deleted (--delete-missing mode)
 }
 
 // ImportIssues handles the core import logic used by both manual and auto-import.
@@ -164,6 +167,14 @@ func ImportIssues(ctx context.Context, dbPath string, store storage.Storage, iss
 	// Import comments
 	if err := importComments(ctx, sqliteStore, issues, opts); err != nil {
 		return nil, err
+	}
+
+	// Delete missing issues if requested (--delete-missing mode)
+	// This removes issues from DB that are not present in the JSONL file
+	if opts.DeleteMissing && !opts.DryRun {
+		if err := deleteMissingIssues(ctx, sqliteStore, issues, opts, result); err != nil {
+			return nil, err
+		}
 	}
 
 	// Checkpoint WAL to ensure data persistence and reduce WAL file size
@@ -971,4 +982,51 @@ func buildAllowedPrefixSet(primaryPrefix string) map[string]bool {
 		return nil // Multi-repo: allow all prefixes
 	}
 	return map[string]bool{primaryPrefix: true}
+}
+
+// deleteMissingIssues removes issues from the database that are not present in the JSONL.
+// This enables full synchronization where JSONL is treated as the authoritative source.
+// Tombstones and ephemeral issues are excluded from deletion.
+func deleteMissingIssues(ctx context.Context, sqliteStore *sqlite.SQLiteStorage, jsonlIssues []*types.Issue, opts Options, result *Result) error {
+	// Build set of IDs present in JSONL for O(1) lookup
+	jsonlIDs := make(map[string]bool)
+	for _, issue := range jsonlIssues {
+		jsonlIDs[issue.ID] = true
+	}
+
+	// Get all issues from database (exclude tombstones - they're already "deleted")
+	dbIssues, err := sqliteStore.SearchIssues(ctx, "", types.IssueFilter{})
+	if err != nil {
+		return fmt.Errorf("failed to get DB issues for delete-missing: %w", err)
+	}
+
+	// Find issues in DB that are not in JSONL
+	var toDelete []string
+	for _, dbIssue := range dbIssues {
+		// Skip tombstones - they're already logically deleted
+		if dbIssue.Status == types.StatusTombstone {
+			continue
+		}
+
+		// Skip wisp (ephemeral) issues - they're not meant to be in JSONL
+		if dbIssue.Wisp {
+			continue
+		}
+
+		// If not in JSONL, mark for deletion
+		if !jsonlIDs[dbIssue.ID] {
+			toDelete = append(toDelete, dbIssue.ID)
+		}
+	}
+
+	// Delete missing issues
+	for _, id := range toDelete {
+		if err := sqliteStore.DeleteIssue(ctx, id); err != nil {
+			return fmt.Errorf("failed to delete missing issue %s: %w", id, err)
+		}
+		result.Deleted++
+		result.DeletedIDs = append(result.DeletedIDs, id)
+	}
+
+	return nil
 }

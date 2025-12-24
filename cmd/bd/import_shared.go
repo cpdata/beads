@@ -166,6 +166,7 @@ type ImportOptions struct {
 	ClearDuplicateExternalRefs bool              // Clear duplicate external_ref values instead of erroring
 	OrphanHandling             string            // Orphan handling mode: strict/resurrect/skip/allow (empty = use config)
 	ProtectLocalExportIDs      map[string]bool   // IDs from left snapshot to protect from git-history-backfill (bd-sync-deletion fix)
+	DeleteMissing              bool              // Delete issues from DB that are not present in JSONL (full sync mode)
 }
 
 // ImportResult contains statistics about the import operation
@@ -174,6 +175,7 @@ type ImportResult struct {
 	Updated             int               // Existing issues updated
 	Unchanged           int               // Existing issues that matched exactly (idempotent)
 	Skipped             int               // Issues skipped (duplicates, errors)
+	Deleted             int               // Issues deleted from DB (--delete-missing mode)
 	Collisions          int               // Collisions detected
 	IDMapping           map[string]string // Mapping of remapped IDs (old -> new)
 	CollisionIDs        []string          // IDs that collided
@@ -181,6 +183,7 @@ type ImportResult struct {
 	ExpectedPrefix      string            // Database configured prefix
 	MismatchPrefixes    map[string]int    // Map of mismatched prefixes to count
 	SkippedDependencies []string          // Dependencies skipped due to FK constraint violations
+	DeletedIDs          []string          // IDs of issues deleted (--delete-missing mode)
 }
 
 // importIssuesCore handles the core import logic used by both manual and auto-import.
@@ -221,6 +224,7 @@ func importIssuesCore(ctx context.Context, dbPath string, store storage.Storage,
 		ClearDuplicateExternalRefs: opts.ClearDuplicateExternalRefs,
 		OrphanHandling:             importer.OrphanHandling(orphanHandling),
 		ProtectLocalExportIDs:      opts.ProtectLocalExportIDs,
+		DeleteMissing:              opts.DeleteMissing,
 	}
 
 	// Delegate to the importer package
@@ -235,6 +239,7 @@ func importIssuesCore(ctx context.Context, dbPath string, store storage.Storage,
 		Updated:             result.Updated,
 		Unchanged:           result.Unchanged,
 		Skipped:             result.Skipped,
+		Deleted:             result.Deleted,
 		Collisions:          result.Collisions,
 		IDMapping:           result.IDMapping,
 		CollisionIDs:        result.CollisionIDs,
@@ -242,6 +247,7 @@ func importIssuesCore(ctx context.Context, dbPath string, store storage.Storage,
 		ExpectedPrefix:      result.ExpectedPrefix,
 		MismatchPrefixes:    result.MismatchPrefixes,
 		SkippedDependencies: result.SkippedDependencies,
+		DeletedIDs:          result.DeletedIDs,
 	}, nil
 }
 

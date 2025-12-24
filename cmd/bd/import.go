@@ -100,6 +100,7 @@ NOTE: Import requires direct database access and does not work with daemon mode.
 		force, _ := cmd.Flags().GetBool("force")
 		protectLeftSnapshot, _ := cmd.Flags().GetBool("protect-left-snapshot")
 		noGitHistory, _ := cmd.Flags().GetBool("no-git-history")
+		deleteMissing, _ := cmd.Flags().GetBool("delete-missing")
 		_ = noGitHistory // Accepted for compatibility with bd sync subprocess calls
 
 		// Check if stdin is being used interactively (not piped)
@@ -260,6 +261,7 @@ NOTE: Import requires direct database access and does not work with daemon mode.
 			RenameOnImport:             renameOnImport,
 			ClearDuplicateExternalRefs: clearDuplicateExternalRefs,
 			OrphanHandling:             orphanHandling,
+			DeleteMissing:              deleteMissing,
 		}
 
 		// If --protect-left-snapshot is set, read the left snapshot and build ID set
@@ -415,6 +417,9 @@ NOTE: Import requires direct database access and does not work with daemon mode.
 
 		// Print summary
 		fmt.Fprintf(os.Stderr, "Import complete: %d created, %d updated", result.Created, result.Updated)
+		if result.Deleted > 0 {
+			fmt.Fprintf(os.Stderr, ", %d deleted", result.Deleted)
+		}
 		if result.Unchanged > 0 {
 			fmt.Fprintf(os.Stderr, ", %d unchanged", result.Unchanged)
 		}
@@ -783,6 +788,7 @@ func init() {
 	importCmd.Flags().Bool("force", false, "Force metadata update even when database is already in sync with JSONL")
 	importCmd.Flags().Bool("protect-left-snapshot", false, "Protect issues in left snapshot from git-history-backfill (bd-sync-deletion fix)")
 	importCmd.Flags().Bool("no-git-history", false, "Skip git history backfill for deletions (passed by bd sync)")
+	importCmd.Flags().Bool("delete-missing", false, "Delete issues from database that are not present in JSONL (full sync mode)")
 	importCmd.Flags().BoolVar(&jsonOutput, "json", false, "Output import statistics in JSON format")
 	rootCmd.AddCommand(importCmd)
 }
