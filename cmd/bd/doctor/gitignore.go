@@ -53,9 +53,15 @@ var requiredPatterns = []string{
 	"*.db?*",
 }
 
-// CheckGitignore checks if .beads/.gitignore is up to date
-func CheckGitignore() DoctorCheck {
-	gitignorePath := filepath.Join(".beads", ".gitignore")
+// CheckGitignore checks if .beads/.gitignore is up to date.
+// If path is empty, uses the current working directory.
+func CheckGitignore(path string) DoctorCheck {
+	var gitignorePath string
+	if path == "" {
+		gitignorePath = filepath.Join(".beads", ".gitignore")
+	} else {
+		gitignorePath = filepath.Join(path, ".beads", ".gitignore")
+	}
 	
 	// Check if file exists
 	content, err := os.ReadFile(gitignorePath) // #nosec G304 -- path is hardcoded
@@ -94,9 +100,15 @@ func CheckGitignore() DoctorCheck {
 	}
 }
 
-// FixGitignore updates .beads/.gitignore to the current template
-func FixGitignore() error {
-	gitignorePath := filepath.Join(".beads", ".gitignore")
+// FixGitignore updates .beads/.gitignore to the current template.
+// If path is empty, uses the current working directory.
+func FixGitignore(path string) error {
+	var gitignorePath string
+	if path == "" {
+		gitignorePath = filepath.Join(".beads", ".gitignore")
+	} else {
+		gitignorePath = filepath.Join(path, ".beads", ".gitignore")
+	}
 
 	// If file exists and is read-only, fix permissions first
 	if info, err := os.Stat(gitignorePath); err == nil {

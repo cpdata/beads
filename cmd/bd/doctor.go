@@ -359,7 +359,7 @@ func applyFixList(path string, fixes []doctorCheck) {
 		var err error
 		switch check.Name {
 		case "Gitignore":
-			err = doctor.FixGitignore()
+			err = doctor.FixGitignore(path)
 		case "Git Hooks":
 			err = fix.GitHooks(path)
 		case "Daemon Health":
@@ -731,7 +731,7 @@ func runDiagnostics(path string) doctorResult {
 	// Don't fail overall check for legacy docs, just warn
 
 	// Check 14: Gitignore up to date
-	gitignoreCheck := convertWithCategory(doctor.CheckGitignore(), doctor.CategoryGit)
+	gitignoreCheck := convertWithCategory(doctor.CheckGitignore(path), doctor.CategoryGit)
 	result.Checks = append(result.Checks, gitignoreCheck)
 	// Don't fail overall check for gitignore, just warn
 

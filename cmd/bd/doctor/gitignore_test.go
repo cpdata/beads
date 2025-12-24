@@ -95,8 +95,8 @@ func TestFixGitignore_FilePermissions(t *testing.T) {
 			// Setup test conditions
 			tt.setupFunc(t, tmpDir)
 
-			// Run FixGitignore
-			err = FixGitignore()
+			// Run FixGitignore (empty path uses current working directory)
+			err = FixGitignore("")
 
 			// Check error expectation
 			if tt.expectError {
@@ -167,8 +167,8 @@ func TestFixGitignore_FileOwnership(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Run FixGitignore
-	if err := FixGitignore(); err != nil {
+	// Run FixGitignore (empty path uses current working directory)
+	if err := FixGitignore(""); err != nil {
 		t.Fatalf("FixGitignore failed: %v", err)
 	}
 
@@ -240,8 +240,8 @@ func TestFixGitignore_DoesNotLoosenPermissions(t *testing.T) {
 	}
 	beforePerms := beforeInfo.Mode().Perm()
 
-	// Run FixGitignore
-	if err := FixGitignore(); err != nil {
+	// Run FixGitignore (empty path uses current working directory)
+	if err := FixGitignore(""); err != nil {
 		t.Fatalf("FixGitignore failed: %v", err)
 	}
 
@@ -339,7 +339,7 @@ daemon.log
 
 			tt.setupFunc(t, tmpDir)
 
-			check := CheckGitignore()
+			check := CheckGitignore("")
 
 			if check.Status != tt.expectedStatus {
 				t.Errorf("Expected status %s, got %s", tt.expectedStatus, check.Status)
@@ -483,7 +483,7 @@ custom-pattern.txt
 				t.Fatal(err)
 			}
 
-			err = FixGitignore()
+			err = FixGitignore("")
 			if err != nil {
 				t.Fatalf("FixGitignore failed: %v", err)
 			}
@@ -556,7 +556,7 @@ beads.right.meta.json
 		t.Fatal(err)
 	}
 
-	err = FixGitignore()
+	err = FixGitignore("")
 	if err != nil {
 		t.Fatalf("FixGitignore failed: %v", err)
 	}
@@ -622,7 +622,7 @@ func TestFixGitignore_Symlink(t *testing.T) {
 
 	// Run FixGitignore - it should write through the symlink
 	// (os.WriteFile follows symlinks, it doesn't replace them)
-	err = FixGitignore()
+	err = FixGitignore("")
 	if err != nil {
 		t.Fatalf("FixGitignore failed: %v", err)
 	}
@@ -741,7 +741,7 @@ beads.right.meta.json
 				t.Fatal(err)
 			}
 
-			err = FixGitignore()
+			err = FixGitignore("")
 			if err != nil {
 				t.Fatalf("FixGitignore failed: %v", err)
 			}
@@ -841,7 +841,7 @@ func TestFixGitignore_VeryLongLines(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			err = FixGitignore()
+			err = FixGitignore("")
 
 			if tt.expectSuccess {
 				if err != nil {
@@ -1035,7 +1035,7 @@ daemon.log
 
 			tt.setupFunc(t, tmpDir)
 
-			check := CheckGitignore()
+			check := CheckGitignore("")
 
 			if check.Status != tt.expectedStatus {
 				t.Errorf("Expected status %s, got %s", tt.expectedStatus, check.Status)
@@ -1103,7 +1103,7 @@ func TestFixGitignore_SubdirectoryGitignore(t *testing.T) {
 	}
 
 	// Run FixGitignore
-	err = FixGitignore()
+	err = FixGitignore("")
 	if err != nil {
 		t.Fatalf("FixGitignore failed: %v", err)
 	}
@@ -1133,5 +1133,60 @@ func TestFixGitignore_SubdirectoryGitignore(t *testing.T) {
 	}
 	if string(rootContent) != rootGitignoreContent {
 		t.Error("root .gitignore should not be modified")
+	}
+}
+
+// TestCheckGitignore_WithAbsolutePath tests that CheckGitignore works with absolute paths
+// This is critical for the daemon which may run from a different working directory
+func TestCheckGitignore_WithAbsolutePath(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create .beads directory with gitignore
+	beadsDir := filepath.Join(tmpDir, ".beads")
+	if err := os.Mkdir(beadsDir, 0750); err != nil {
+		t.Fatal(err)
+	}
+
+	gitignorePath := filepath.Join(beadsDir, ".gitignore")
+	if err := os.WriteFile(gitignorePath, []byte(GitignoreTemplate), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Test with absolute path (NOT changing working directory)
+	// This simulates how the daemon calls the function
+	check := CheckGitignore(tmpDir)
+
+	if check.Status != "ok" {
+		t.Errorf("Expected status 'ok', got '%s': %s", check.Status, check.Message)
+	}
+}
+
+// TestFixGitignore_WithAbsolutePath tests that FixGitignore works with absolute paths
+// This is critical for the daemon which may run from a different working directory
+func TestFixGitignore_WithAbsolutePath(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create .beads directory without gitignore
+	beadsDir := filepath.Join(tmpDir, ".beads")
+	if err := os.Mkdir(beadsDir, 0750); err != nil {
+		t.Fatal(err)
+	}
+
+	// Test with absolute path (NOT changing working directory)
+	// This simulates how the daemon calls the function
+	err := FixGitignore(tmpDir)
+	if err != nil {
+		t.Fatalf("FixGitignore with absolute path failed: %v", err)
+	}
+
+	// Verify file was created at the correct location
+	gitignorePath := filepath.Join(beadsDir, ".gitignore")
+	content, err := os.ReadFile(gitignorePath)
+	if err != nil {
+		t.Fatalf("Failed to read created .gitignore: %v", err)
+	}
+
+	if string(content) != GitignoreTemplate {
+		t.Error("Content does not match GitignoreTemplate")
 	}
 }

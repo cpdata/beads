@@ -417,10 +417,12 @@ func runDaemonLoop(interval time.Duration, autoCommit, autoPush, autoPull, local
 	log.Info("database opened", "path", daemonDBPath, "freshness_checking", true)
 
 	// Auto-upgrade .beads/.gitignore if outdated
-	gitignoreCheck := doctor.CheckGitignore()
+	// Use absolute path (parent of beadsDir) since daemon may run from different directory
+	workspaceRoot := filepath.Dir(beadsDir)
+	gitignoreCheck := doctor.CheckGitignore(workspaceRoot)
 	if gitignoreCheck.Status == "warning" || gitignoreCheck.Status == "error" {
 		log.Info("upgrading .beads/.gitignore")
-		if err := doctor.FixGitignore(); err != nil {
+		if err := doctor.FixGitignore(workspaceRoot); err != nil {
 			log.Warn("failed to upgrade .gitignore", "error", err)
 		} else {
 			log.Info("successfully upgraded .beads/.gitignore")
